@@ -9,6 +9,7 @@
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
+<div class="idle" id="idle" role="timer" aria-label="자동 로그아웃까지 남은 시간" hidden></div>
 <main>
   <section id="login" hidden>
     <h1>인증 코드 입력</h1>
@@ -39,7 +40,7 @@
 <script>
 (() => {
   const SESSION_KEY = "otp_login_until";
-  const { secret = "", sessionMinutes = 30 } = window.OTP_CONFIG || {};
+  const { secret = "", idleSeconds = 60 } = window.OTP_CONFIG || {};
   const $ = id => document.getElementById(id);
   const digitsEl = $("digits");
   const boxes = [];
@@ -48,8 +49,28 @@
   function store(fn) { try { return fn(sessionStorage); } catch { return null; } }
   const isLoggedIn = () => Number(store(s => s.getItem(SESSION_KEY)) || 0) > Date.now();
 
+  const extendSession = () => store(s => s.setItem(SESSION_KEY, Date.now() + idleSeconds * 1000));
+
+  // 남은 시간을 [01:00] 형식으로 표시
+  function renderIdle() {
+    const until = Number(store(s => s.getItem(SESSION_KEY)) || 0);
+    const left = Math.max(0, Math.ceil((until - Date.now()) / 1000));
+    const mm = String(Math.floor(left / 60)).padStart(2, "0");
+    const ss = String(left % 60).padStart(2, "0");
+    $("idle").textContent = `[${mm}:${ss}]`;
+    $("idle").classList.toggle("low", left <= 10);
+  }
+
+  function logout(message = "") {
+    store(s => s.removeItem(SESSION_KEY));
+    show("login");
+    setMsg(message);
+  }
+
   function show(id) {
     for (const s of ["login", "nosecret", "home"]) $(s).hidden = s !== id;
+    $("idle").hidden = id !== "home";
+    if (id === "home") renderIdle();
     if (id === "login") { clearBoxes(); boxes[0].focus(); }
   }
 
@@ -85,7 +106,7 @@
     }
     busy = false;
     if (ok) {
-      store(s => s.setItem(SESSION_KEY, Date.now() + sessionMinutes * 60000));
+      extendSession();
       setMsg("");
       show("home");
     } else {
@@ -133,10 +154,22 @@
   }
 
   $("form").addEventListener("submit", e => { e.preventDefault(); submit(); });
-  $("logout").addEventListener("click", () => {
-    store(s => s.removeItem(SESSION_KEY));
-    show("login");
-  });
+  $("logout").addEventListener("click", () => logout());
+
+  // 마우스, 키보드, 터치 입력이 있으면 자동 로그아웃 시간을 연장
+  // 이미 시간이 지났다면 연장하지 않음 (절전 복귀, 백그라운드 탭 대비)
+  let lastExtend = 0;
+  function onActivity() {
+    if ($("home").hidden || !isLoggedIn()) return;
+    const now = Date.now();
+    if (now - lastExtend < 250) return;
+    lastExtend = now;
+    extendSession();
+    renderIdle();
+  }
+  for (const type of ["mousemove", "mousedown", "keydown", "wheel", "touchstart", "scroll"]) {
+    window.addEventListener(type, onActivity, { passive: true, capture: true });
+  }
 
   function tick() {
     const ms = Date.now() % 30000;
@@ -144,8 +177,11 @@
     $("bar").style.transform = `scaleX(${1 - ms / 30000})`;
     $("timer").classList.toggle("low", left <= 5);
     $("timerText").textContent = `현재 코드 남은 시간 ${left}초`;
-    // 세션이 끝나면 로그인 화면으로 복귀
-    if (!$("home").hidden && !isLoggedIn()) show("login");
+    // 입력 없이 시간이 지나면 자동 로그아웃
+    if (!$("home").hidden) {
+      if (isLoggedIn()) renderIdle();
+      else logout(`${idleSeconds}초 동안 입력이 없어 로그아웃되었습니다. 코드를 다시 입력하세요.`);
+    }
   }
   setInterval(tick, 250);
   tick();
