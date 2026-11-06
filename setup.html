@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>OTP 등록</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<main class="wide">
+  <h1>Google Authenticator 등록</h1>
+  <p class="sub">PC에서 이 파일을 직접 열어 사용하세요. GitHub에는 올리지 않습니다.</p>
+  <ol class="steps">
+    <li>
+      <h2>앱에 표시할 이름 정하기</h2>
+      <label>서비스 이름<input id="issuer" value="My Site"></label>
+      <label>계정 이름<input id="account" value="admin"></label>
+    </li>
+    <li>
+      <h2>QR 코드 스캔</h2>
+      <p>앱에서 + 버튼을 누르고 QR 코드를 스캔하세요.</p>
+      <div id="qr"></div>
+      <p style="margin-top:12px">스캔이 안 되면 설정 키를 직접 입력하세요.<br><span class="key" id="key"></span></p>
+      <div class="row"><button class="quiet" id="regen" type="button">새 키 만들기</button></div>
+    </li>
+    <li>
+      <h2>코드 확인</h2>
+      <label>앱에 표시된 6자리 코드<input id="check" inputmode="numeric" maxlength="6" autocomplete="off"></label>
+      <p class="msg" id="msg" role="alert"></p>
+    </li>
+    <li>
+      <h2>config.js 교체</h2>
+      <p>내려받은 파일로 기존 config.js를 덮어쓰세요.</p>
+      <div class="row"><button id="download" type="button">config.js 내려받기</button></div>
+    </li>
+  </ol>
+</main>
+<script src="qrcode.js"></script>
+<script src="totp.js"></script>
+<script>
+(() => {
+  const $ = id => document.getElementById(id);
+  let secret = TOTP.generateSecret();
+
+  function render() {
+    const issuer = $("issuer").value.trim() || "My Site";
+    const account = $("account").value.trim() || "admin";
+    const label = encodeURIComponent(issuer) + ":" + encodeURIComponent(account);
+    const uri = `otpauth://totp/${label}?secret=${secret}&issuer=${encodeURIComponent(issuer)}&algorithm=SHA1&digits=6&period=30`;
+    const qr = qrcode(0, "M");
+    qr.addData(uri);
+    qr.make();
+    $("qr").innerHTML = qr.createSvgTag({ cellSize: 4, margin: 0, scalable: true });
+    $("key").textContent = secret.match(/.{1,4}/g).join(" ");
+  }
+
+  $("issuer").addEventListener("input", render);
+  $("account").addEventListener("input", render);
+  $("regen").addEventListener("click", () => {
+    secret = TOTP.generateSecret();
+    $("check").value = "";
+    $("msg").textContent = "";
+    render();
+  });
+
+  $("check").addEventListener("input", async e => {
+    const code = e.target.value.replace(/\D/g, "");
+    e.target.value = code;
+    const msg = $("msg");
+    if (code.length < 6) { msg.textContent = ""; return; }
+    const ok = await TOTP.verify(secret, code);
+    msg.textContent = ok ? "코드가 일치합니다. 다음 단계로 진행하세요." : "코드가 일치하지 않습니다. 앱의 현재 코드를 입력하세요.";
+    msg.className = "msg " + (ok ? "good" : "bad");
+  });
+
+  $("download").addEventListener("click", () => {
+    const text = `window.OTP_CONFIG = {\n  secret: "${secret}",\n  sessionMinutes: 30\n};\n`;
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(new Blob([text], { type: "text/javascript" }));
+    a.download = "config.js";
+    a.click();
+    URL.revokeObjectURL(a.href);
+  });
+
+  render();
+})();
+</script>
+</body>
+</html>
