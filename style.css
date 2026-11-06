@@ -68,8 +68,8 @@ label input {
 
 /* 자동 로그아웃 카운트 */
 .idle {
-  position: fixed; top: 16px; right: 16px;
-  font: 600 1.1rem ui-monospace, Consolas, Menlo, monospace;
+  margin-bottom: 20px; text-align: center;
+  font: 600 1.5rem ui-monospace, Consolas, Menlo, monospace;
   font-variant-numeric: tabular-nums; color: var(--ink);
 }
 .idle.low { color: var(--bad); }
